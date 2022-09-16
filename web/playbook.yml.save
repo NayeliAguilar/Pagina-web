@@ -1,0 +1,111 @@
+##################################################
+# DO Community Playbooks: LAMP on Ubuntu 18.04
+##################################################
+---
+- hosts: all
+  become: true
+  vars_files:
+    - vars/default.yml
+
+  tasks:
+    - name: Install prerequisites
+      apt: name={{ item }} update_cache=yes state=latest force_apt_get=yes
+      loop: [ 'aptitude' ]
+
+  #Apache Configuration
+    - name: Install LAMP Packages
+      apt: name={{ item }} update_cache=yes state=latest
+      loop: [ 'apache2', 'mysql-server', 'python3-pymysql', 'php', 'php-mysql', 'libapache2-mod-php' ]
+
+    - name: Create document web
+      file:
+        path: "/var/www/www{{ http_host }}"
+        state: directory
+        owner: "{{ app_user }}"
+        mode: '0755'
+
+    - name: Create document app
+      file:
+        path: "/var/www/app{{ http_host }}"
+        state: directory
+        owner: "{{ app_user }}"
+        mode: '0755'
+
+    - name: Set up Apache virtualhost
+      template:
+        src: "files/apache.conf.j2"
+        dest: "/etc/apache2/sites-available/{{ http_conf }}"
+      notify: Reload Apache
+
+    - name: Enable new site
+      shell: /usr/sbin/a2ensite {{ http_conf }}
+      notify: Reload Apache
+
+    - name: Disable default Apache site
+      shell: /usr/sbin/a2dissite 000-default.conf
+      when: disable_default
+      notify: Reload Apache
+
+  # MySQL Configuration
+    - name: Sets the root password
+      mysql_user:
+	login_user: root
+	login_password: "admon563"
+	name: root
+	password: "{{ mysql_root_password }}"
+	login_unix_socket: /var/run/mysqld/mysqld.sock
+
+   - name: create a new database
+     mysql_db: name=sistema state=present login_user=root login_password="admon563"
+
+   - name: add sample data to database
+     copy: src=sitioWeb/sistema.sql dest=/tmp/sistema.sql
+
+   - name: insert sample data into database
+     mysql_db:
+name=sistema state=import target=/tmp/sistema.sql login_user=root login_password="admon563"
+
+    - name: Removes all anonymous user accounts
+      mysql_user:
+        name: ''
+        host_all: yes
+        state: absent
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+
+    - name: Removes the MySQL test database
+      mysql_db:
+        name: test
+        state: absent
+        login_user: root
+        login_password: "{{ mysql_root_password }}"
+
+  # UFW Configuration
+    - name: "UFW - Allow HTTP on port {{ http_port }}"
+      ufw:
+        rule: allow
+        port: "{{ http_port }}"
+        proto: tcp
+
+  # App
+    - name: Clonar repositorio app
+      git:
+        repo: "https://github.com/NayeliAguilar/Despliegue.git"
+        dest: "/var/www/app{{ http_host }}/"
+
+# Web
+    - name: Clonar repositorio web
+      git:
+        repo: "https://github.com/NayeliAguilar/Pagina-web.git"
+        dest: "/var/www/www{{ http_host }}/"
+
+  handlers:
+    - name: Reload Apache
+      service:
+        name: apache2
+        state: reloaded
+
+    - name: Restart Apache
+      service:
+        name: apache2
+        state: restarted

@@ -1,0 +1,7 @@
+---
+mysql_root_password: "admon563"
+app_user: "nayeli"
+http_host: "www.saguilar.com"
+http_conf: "www.saguilar.com.conf"
+http_port: "80"
+disable_default: true
